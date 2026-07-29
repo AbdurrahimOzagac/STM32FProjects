@@ -1,0 +1,30 @@
+# ====================================================
+# STM32CubeIDE Workspace .gitignore
+# ====================================================
+
+# 1
+.metadata/
+RemoteSystemsTempFiles/
+
+# 2. Build
+Debug/
+Release/
+*/Debug/
+*/Release/
+
+# 3. Temp
+*.o
+*.d
+*.elf
+*.map
+*.bin
+*.hex
+*.log
+*.list
+*.su
+*.bak
+
+# 4. OS artifacts
+.DS_Store
+Thumbs.db
+desktop.ini
