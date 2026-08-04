@@ -1,5 +1,0 @@
-IMU sensorunu kartın üzerindeki modeline bak
-
-IMU nedir nerede kullanılır nasıl çalışır, içinde ne var. sınıfları nelerdir.
-
-difaransyel hat nedir, rs422 usb ethernet.
