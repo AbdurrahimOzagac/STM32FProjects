@@ -46,7 +46,15 @@ I2C_HandleTypeDef hi2c1;
 
 /* USER CODE BEGIN PV */
 
+/**
+ * @brief DS3231 instance bound to hi2c1 (see DS3231_Port_STM32_Init() below).
+ *        All DS3231_Set_Time() / DS3231_Get_Time() calls for this device
+ *        must go through this handle.
+ */
 DS3231_Handle_t ds3231Handle;
+
+/** @brief Most recently read date/time snapshot, refreshed every second
+ *         in the main loop below. */
 DS3231_Time_t ds3231Time;
 
 /* USER CODE END PV */
@@ -107,9 +115,16 @@ int main(void) {
 
 	 }
 	 */
-	DS3231_Port_STM32_Init(&ds3231Handle, &hi2c1);
-	DS3231_Set_Time(&ds3231Handle, 0, 22, 22, 2, 5, 6, 13);
 
+	/* Bind ds3231Handle to the I2C1 peripheral (must run after
+	 * MX_I2C1_Init()). */
+	DS3231_Port_STM32_Init(&ds3231Handle, &hi2c1);
+
+	/* One-time RTC provisioning: sec=0, min=22, hour=22, dayOfWeek=2,
+	 * dayOfMonth=5, month=6, year=13. Intended for initial bring-up;
+	 * remove or guard this call once the RTC has been set, otherwise
+	 * the clock resets to this fixed time on every reboot. */
+	DS3231_Set_Time(&ds3231Handle, 0, 22, 22, 2, 5, 6, 13);
 
 	/* USER CODE END 2 */
 
@@ -120,6 +135,8 @@ int main(void) {
 
 		/* USER CODE BEGIN 3 */
 
+		/* Poll the RTC once per second. On failure, ds3231Time keeps
+		 * its last valid value (see DS3231_Get_Time() contract). */
 		DS3231_Get_Time(&ds3231Handle, &ds3231Time);
 		HAL_Delay(1000);
 	}
