@@ -1,0 +1,14 @@
+
+1- 100MS'de 1 ya da sadece çağırıldığı zaman olan 2 mod olarak ekle
+
+2- HW-123 sensörü yap
+
+3- HW-246 sensörü yap
+
+4- Bunları kütüphaneleştir
+
+5- Hepsini ortak projede çalıştır
+
+6- Python basit 3D renderer yap
+
+7- Projeyi pythonda görünür hale getir
