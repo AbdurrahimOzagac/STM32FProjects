@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include <math.h>
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -34,10 +35,12 @@
 
 #define GY68_ADDRESS_READ	0xEF
 #define GY68_ADDRESS_WRITE	0xEE
-#define	GY68_COMMAND_TEMP	0x2E
 
 #define GY68_COMMAND_TEMP  0x2E
 #define GY68_COMMAND_PRESS 0x34
+
+#define GY68_CONTROL_REG	0xF4
+#define G68_READ_REG		0xF6
 
 #define BMP180_OSS         0
 
@@ -77,6 +80,8 @@ uint32_t upressure;
 float temp_c;
 long pressure_pa;
 
+long init_pressure_pa;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -93,8 +98,6 @@ static void MX_I2C1_Init(void);
 void BMP180_Read_Calibration(void);
 float BMP180_Get_Temperature_Celsius(uint16_t ut, BMP180_Calib_t *calib);
 long BMP180_Get_Pressure_Pa(uint32_t up, BMP180_Calib_t *calib);
-
-
 
 void BMP180_Read_Calibration(void) {
 	uint8_t buffer[22];
@@ -127,11 +130,12 @@ void BMP180_Update() {
 		//Command to Read Uncompensated Temperature to GY68
 		uint8_t command = GY68_COMMAND_TEMP;
 
-		HAL_I2C_Mem_Write(&hi2c1, GY68_ADDRESS_WRITE, 0xF4, 1, &command, 1,
-				100); 		//Başarısızlık durumunda yanlış veri verir!
+		if (HAL_I2C_Mem_Write(&hi2c1, GY68_ADDRESS_WRITE, GY68_CONTROL_REG, 1,
+				&command, 1, 100) == HAL_OK) {
+			bmp_state = 1;
+		}
 
 		bmp_timer = HAL_GetTick();
-		bmp_state = 1;
 		break;
 
 	case 1:
@@ -140,19 +144,21 @@ void BMP180_Update() {
 			//READ Uncompensated Temperature from GY68 Memory
 			uint8_t raw_data[2] = { 0 };
 
-			HAL_I2C_Mem_Read(&hi2c1, GY68_ADDRESS_READ, 0xF6, 1, raw_data, 2,
-					100);	//Başarısızlık durumunda yanlış veri verir!
+			if (HAL_I2C_Mem_Read(&hi2c1, GY68_ADDRESS_READ, G68_READ_REG, 1,
+					(uint8_t*) raw_data, 2, 100) == HAL_OK) { //Başarısızlık durumunda yanlış veri verir!
+				utemp = (raw_data[0] << 8) | raw_data[1];
 
-			utemp = (raw_data[0] << 8) | raw_data[1];
+				//Command to Read Uncompensated Pressure to GY68
+				uint8_t command = GY68_COMMAND_PRESS;
 
-			//Command to Read Uncompensated Pressure to GY68
-			uint8_t command = GY68_COMMAND_PRESS;
+				HAL_I2C_Mem_Write(&hi2c1, GY68_ADDRESS_WRITE, GY68_CONTROL_REG,
+						1, &command, 1, 100); //Başarısızlık durumunda yanlış veri verir!
 
-			HAL_I2C_Mem_Write(&hi2c1, GY68_ADDRESS_WRITE, 0xF4, 1, &command, 1,
-					100);	//Başarısızlık durumunda yanlış veri verir!
+				bmp_state = 2;
+				bmp_timer = HAL_GetTick();
+			} else
+				bmp_state = 0;
 
-			bmp_timer = HAL_GetTick();
-			bmp_state = 2;
 		}
 		break;
 
@@ -160,15 +166,18 @@ void BMP180_Update() {
 		if (HAL_GetTick() - bmp_timer >= 5) {
 
 			uint8_t raw_data[2] = { 0 };
-			HAL_I2C_Mem_Read(&hi2c1, GY68_ADDRESS_READ, 0xF6, 1, raw_data, 2,
-					10);	//Başarısızlık durumunda yanlış veri verir!
+			if (HAL_I2C_Mem_Read(&hi2c1, GY68_ADDRESS_READ, G68_READ_REG, 1,
+					raw_data, 2, 10) == HAL_OK) {
 
-			upressure = (raw_data[0] << 8) | raw_data[1];
+				upressure = (raw_data[0] << 8) | raw_data[1];
+
+				temp_c = BMP180_Get_Temperature_Celsius(utemp, &my_calib);
+				pressure_pa = BMP180_Get_Pressure_Pa(upressure, &my_calib);
+
+			}
 
 			bmp_state = 0;
 
-			temp_c = BMP180_Get_Temperature_Celsius(utemp, &my_calib);
-			pressure_pa = BMP180_Get_Pressure_Pa(upressure, &my_calib);
 		}
 		break;
 	}
@@ -254,6 +263,10 @@ int main(void) {
 	/* USER CODE BEGIN 2 */
 
 	BMP180_Read_Calibration();
+
+	BMP180_Update();
+
+	init_pressure_pa = pressure_pa;
 
 	/* USER CODE END 2 */
 
