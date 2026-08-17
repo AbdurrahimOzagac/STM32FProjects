@@ -36,13 +36,18 @@
 #define GY68_ADDRESS_READ	0xEF
 #define GY68_ADDRESS_WRITE	0xEE
 
-#define GY68_COMMAND_TEMP  0x2E
-#define GY68_COMMAND_PRESS 0x34
+#define GY68_COMMAND_TEMP  	0x2E
+#define GY68_COMMAND_PRESS 	0x34
 
 #define GY68_CONTROL_REG	0xF4
 #define G68_READ_REG		0xF6
 
-#define BMP180_OSS         0
+#define BMP180_OSS         	0
+
+#define BMP180_EMA_ALPHA_PRESS  	0.1f
+#define BMP180_EMA_ALPHA_TEMP   	0.1f
+
+#define PRESSURE_SEA_LEVEL_REFERANCE	105904.0f
 
 /* USER CODE END PD */
 
@@ -74,13 +79,34 @@ BMP180_Calib_t my_calib;
 
 long b5_global = 0;
 
+float altitude;
+
 uint16_t utemp;
 uint32_t upressure;
 
 float temp_c;
 long pressure_pa;
 
+float temp_c_filtered = 0.0f;
+float pressure_pa_filtered = 0.0f;
+
+uint8_t bmp_filter_initialized = 0;
+uint8_t init_pressure_captured = 0;
+
 long init_pressure_pa;
+
+typedef enum {
+    BMP180_STATE_IDLE = 0,
+    BMP180_STATE_WAIT_TEMP,
+    BMP180_STATE_WAIT_PRESS
+} BMP180_State_t;
+
+BMP180_State_t bmp_state = BMP180_STATE_IDLE;
+uint32_t bmp_timer = 0;
+
+volatile uint8_t bmp_busy = 0;         // 1 while a measurement cycle is in progress
+volatile uint8_t bmp_data_ready = 0;   // set to 1 when new data is ready, cleared by the reader
+
 
 /* USER CODE END PV */
 
@@ -98,6 +124,15 @@ static void MX_I2C1_Init(void);
 void BMP180_Read_Calibration(void);
 float BMP180_Get_Temperature_Celsius(uint16_t ut, BMP180_Calib_t *calib);
 long BMP180_Get_Pressure_Pa(uint32_t up, BMP180_Calib_t *calib);
+float EMA_Filter(float raw_value, float previous_filtered, float alpha);
+uint8_t BMP180_Start_Measurement(void);
+void BMP180_Process(void);
+void BMP180_StartPeriodic(uint32_t interval_ms);
+float Calc_Altitude(float pressure, float p0);
+
+float Calc_Altitude(float P, float p0){
+	return 44330.0f * (1.0f - powf(P / p0, 1.0f / 5.255f));
+}
 
 void BMP180_Read_Calibration(void) {
 	uint8_t buffer[22];
@@ -117,70 +152,6 @@ void BMP180_Read_Calibration(void) {
 	my_calib.MB = (buffer[16] << 8) | buffer[17];
 	my_calib.MC = (buffer[18] << 8) | buffer[19];
 	my_calib.MD = (buffer[20] << 8) | buffer[21];
-}
-
-void BMP180_Update() {
-	static uint32_t bmp_timer = 0;
-	static uint8_t bmp_state = 0;
-
-	switch (bmp_state) {
-
-	case 0:
-
-		//Command to Read Uncompensated Temperature to GY68
-		uint8_t command = GY68_COMMAND_TEMP;
-
-		if (HAL_I2C_Mem_Write(&hi2c1, GY68_ADDRESS_WRITE, GY68_CONTROL_REG, 1,
-				&command, 1, 100) == HAL_OK) {
-			bmp_state = 1;
-		}
-
-		bmp_timer = HAL_GetTick();
-		break;
-
-	case 1:
-		if (HAL_GetTick() - bmp_timer >= 5) {
-
-			//READ Uncompensated Temperature from GY68 Memory
-			uint8_t raw_data[2] = { 0 };
-
-			if (HAL_I2C_Mem_Read(&hi2c1, GY68_ADDRESS_READ, G68_READ_REG, 1,
-					(uint8_t*) raw_data, 2, 100) == HAL_OK) { //Başarısızlık durumunda yanlış veri verir!
-				utemp = (raw_data[0] << 8) | raw_data[1];
-
-				//Command to Read Uncompensated Pressure to GY68
-				uint8_t command = GY68_COMMAND_PRESS;
-
-				HAL_I2C_Mem_Write(&hi2c1, GY68_ADDRESS_WRITE, GY68_CONTROL_REG,
-						1, &command, 1, 100); //Başarısızlık durumunda yanlış veri verir!
-
-				bmp_state = 2;
-				bmp_timer = HAL_GetTick();
-			} else
-				bmp_state = 0;
-
-		}
-		break;
-
-	case 2:
-		if (HAL_GetTick() - bmp_timer >= 5) {
-
-			uint8_t raw_data[2] = { 0 };
-			if (HAL_I2C_Mem_Read(&hi2c1, GY68_ADDRESS_READ, G68_READ_REG, 1,
-					raw_data, 2, 10) == HAL_OK) {
-
-				upressure = (raw_data[0] << 8) | raw_data[1];
-
-				temp_c = BMP180_Get_Temperature_Celsius(utemp, &my_calib);
-				pressure_pa = BMP180_Get_Pressure_Pa(upressure, &my_calib);
-
-			}
-
-			bmp_state = 0;
-
-		}
-		break;
-	}
 }
 
 float BMP180_Get_Temperature_Celsius(uint16_t ut, BMP180_Calib_t *calib) {
@@ -229,6 +200,120 @@ long BMP180_Get_Pressure_Pa(uint32_t up, BMP180_Calib_t *calib) {
 	return p;
 }
 
+/**
+ * @brief  Simple exponential moving average filter.
+ * @param  raw_value: newly measured raw value
+ * @param  previous_filtered: previous filtered output
+ * @param  alpha: smoothing factor (0..1). Higher = faster response, less smoothing.
+ * @retval New filtered value
+ */
+float EMA_Filter(float raw_value, float previous_filtered, float alpha) {
+    return alpha * raw_value + (1.0f - alpha) * previous_filtered;
+}
+
+
+void BMP180_StartPeriodic(uint32_t interval_ms){
+
+	static uint32_t clock = 0;
+
+	if(HAL_GetTick() - clock >= interval_ms){
+
+		if(BMP180_Start_Measurement()){
+			clock = HAL_GetTick();
+		}
+	}
+}
+
+/**
+ * @brief  Starts a new non-blocking measurement cycle. Returns immediately.
+ * @retval 1 if started, 0 if a measurement is already in progress
+ */
+
+uint8_t BMP180_Start_Measurement(void) {
+    if (bmp_busy) {
+        return 0; // previous measurement still running, ignore new request
+    }
+
+    bmp_busy = 1;
+    bmp_data_ready = 0;
+    bmp_state = BMP180_STATE_WAIT_TEMP;
+
+    uint8_t command = GY68_COMMAND_TEMP;
+    HAL_I2C_Mem_Write(&hi2c1, GY68_ADDRESS_WRITE, GY68_CONTROL_REG, 1,
+            &command, 1, 100);
+
+    bmp_timer = HAL_GetTick();
+    return 1;
+}
+
+/**
+ * @brief  Advances the state machine. Must be called continuously inside while(1).
+ *         Completes the measurement started by BMP180_Start_Measurement() in the
+ *         background and sets bmp_data_ready = 1 once new data is available.
+ */
+void BMP180_Process(void) {
+
+    switch (bmp_state) {
+
+    case BMP180_STATE_IDLE:
+
+        break;
+
+    case BMP180_STATE_WAIT_TEMP:
+        if (HAL_GetTick() - bmp_timer >= 5) {
+
+            uint8_t raw_data[2];
+            if (HAL_I2C_Mem_Read(&hi2c1, GY68_ADDRESS_READ, G68_READ_REG, 1,
+                    raw_data, 2, 100) == HAL_OK) {
+                utemp = (raw_data[0] << 8) | raw_data[1];
+
+                uint8_t command = GY68_COMMAND_PRESS;
+                HAL_I2C_Mem_Write(&hi2c1, GY68_ADDRESS_WRITE, GY68_CONTROL_REG,
+                        1, &command, 1, 100);
+
+                bmp_state = BMP180_STATE_WAIT_PRESS;
+                bmp_timer = HAL_GetTick();
+            } else {
+                // I2C error: abort the cycle, go back to idle
+                bmp_busy = 0;
+                bmp_state = BMP180_STATE_IDLE;
+            }
+        }
+        break;
+
+    case BMP180_STATE_WAIT_PRESS:
+        if (HAL_GetTick() - bmp_timer >= 5) {
+
+            uint8_t raw_data[2];
+            if (HAL_I2C_Mem_Read(&hi2c1, GY68_ADDRESS_READ, G68_READ_REG, 1,
+                    raw_data, 2, 100) == HAL_OK) {
+
+                upressure = (raw_data[0] << 8) | raw_data[1];
+
+                temp_c      = BMP180_Get_Temperature_Celsius(utemp, &my_calib);
+                pressure_pa = BMP180_Get_Pressure_Pa(upressure, &my_calib);
+
+                if (!bmp_filter_initialized) {
+                    temp_c_filtered      = temp_c;
+                    pressure_pa_filtered = (float) pressure_pa;
+                    bmp_filter_initialized = 1;
+                } else {
+                    temp_c_filtered      = EMA_Filter(temp_c, temp_c_filtered, BMP180_EMA_ALPHA_TEMP);
+                    pressure_pa_filtered = EMA_Filter((float) pressure_pa, pressure_pa_filtered, BMP180_EMA_ALPHA_PRESS);
+                }
+
+                bmp_data_ready = 1;
+            }
+
+            bmp_busy = 0;
+            bmp_state = BMP180_STATE_IDLE;
+        }
+        break;
+    }
+}
+
+
+
 /* USER CODE END 0 */
 
 /**
@@ -264,9 +349,7 @@ int main(void) {
 
 	BMP180_Read_Calibration();
 
-	BMP180_Update();
-
-	init_pressure_pa = pressure_pa;
+	BMP180_Start_Measurement();
 
 	/* USER CODE END 2 */
 
@@ -276,8 +359,22 @@ int main(void) {
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */
+		BMP180_Process();
 
-		BMP180_Update();
+		BMP180_StartPeriodic(100);
+
+		if(bmp_data_ready){
+			bmp_data_ready = 0;
+
+	        if (!init_pressure_captured) {
+	            init_pressure_pa = pressure_pa;
+	            init_pressure_captured = 1;
+	        }
+
+	        altitude = Calc_Altitude(pressure_pa_filtered, PRESSURE_SEA_LEVEL_REFERANCE);
+
+		}
+
 	}
 	/* USER CODE END 3 */
 }
