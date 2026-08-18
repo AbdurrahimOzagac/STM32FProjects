@@ -91,16 +91,6 @@ int main(void) {
 	MX_I2C1_Init();
 	/* USER CODE BEGIN 2 */
 
-	uint8_t count = 0;
-
-	for (int i = 0; i < 256; i++) {
-
-		if (HAL_I2C_IsDeviceReady(&hi2c1, (uint16_t)i, 1, 40) == HAL_OK) {
-			address[count++] = i;
-
-		}
-	}
-
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
@@ -109,6 +99,16 @@ int main(void) {
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */
+
+		uint8_t count = 0;
+
+		for (int i = 0; i < 256; i++) {
+
+			if (HAL_I2C_IsDeviceReady(&hi2c1, (uint16_t)i, 1, 40) == HAL_OK) {
+				address[count++] = i;
+			}
+		}
+
 	}
 	/* USER CODE END 3 */
 }

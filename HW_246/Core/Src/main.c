@@ -32,8 +32,8 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
-#define MPU6050_WRITE_ADDR		0xD0
-#define MPU6050_READ_ADDR   	0xD1
+#define QMC5883P_WRITE_ADDR 	0x58
+#define QMC5883P_READ_ADDR		0x59
 
 /* USER CODE END PD */
 
@@ -48,27 +48,16 @@ I2C_HandleTypeDef hi2c1;
 /* USER CODE BEGIN PV */
 
 typedef struct {
-	int16_t accel_x;
-	int16_t accel_y;
-	int16_t accel_z;
-} Acceleration_t;
 
-Acceleration_t accel_g;
+	int16_t x_mag;
+	int16_t y_mag;
+	int16_t z_mag;
 
-typedef struct {
-	int16_t gyro_x;
-	int16_t gyro_y;
-	int16_t gyro_z;
-} Gyroscope_t;
+} QMC5883P_MAGNETOMETER;
 
-Gyroscope_t gyro_g;
+QMC5883P_MAGNETOMETER mag_g;
 
-typedef struct {
-	Acceleration_t accel;
-	Gyroscope_t gyro;
-} MPU6050_t;
-
-MPU6050_t angle_info_g;
+uint16_t error_count;
 
 /* USER CODE END PV */
 
@@ -76,7 +65,6 @@ MPU6050_t angle_info_g;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
-
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -84,103 +72,56 @@ static void MX_I2C1_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-Acceleration_t Get_Acceleration(void);
-Gyroscope_t Get_Gyroscope(void);
-MPU6050_t Get_Angle_Info(void);
-void MPU6050_Init(uint8_t wake, uint8_t accel_mode, uint8_t gyro_mode,
-		uint8_t dlpf_mode);
-void MPU6050_Init_Default(void);
+uint8_t QMC5883P_Get_Values(QMC5883P_MAGNETOMETER *out) {
 
-Acceleration_t Get_Acceleration(void) {
+	uint8_t buffer[6] = { 0 };
 
-	uint8_t buffer[6];
+	if (HAL_I2C_Mem_Read(&hi2c1, QMC5883P_READ_ADDR, 0x01, I2C_MEMADD_SIZE_8BIT,
+			buffer, 6, 100) != HAL_OK) {
+		uint32_t err = HAL_I2C_GetError(&hi2c1);
 
-	Acceleration_t accel;
+		error_count++;
 
-	HAL_I2C_Mem_Read(&hi2c1, MPU6050_READ_ADDR, 0x3B, I2C_MEMADD_SIZE_8BIT,
-			buffer, 6, 100);
-
-	accel.accel_x = (int16_t) (buffer[0] << 8) | buffer[1];
-	accel.accel_y = (int16_t) (buffer[2] << 8) | buffer[3];
-	accel.accel_z = (int16_t) (buffer[4] << 8) | buffer[5];
-
-	return accel;
-}
-
-Gyroscope_t Get_Gyroscope(void) {
-
-	uint8_t buffer[6];
-
-	Gyroscope_t gyro;
-
-	HAL_I2C_Mem_Read(&hi2c1, MPU6050_READ_ADDR, 0x43, I2C_MEMADD_SIZE_8BIT,
-			buffer, 6, 100);
-
-	gyro.gyro_x = (int16_t) (buffer[0] << 8) | buffer[1];
-	gyro.gyro_y = (int16_t) (buffer[2] << 8) | buffer[3];
-	gyro.gyro_z = (int16_t) (buffer[4] << 8) | buffer[5];
-
-	return gyro;
-}
-
-MPU6050_t Get_Angle_Info(void) { //Infolar ekle
-
-	uint8_t buffer[14];
-
-	Acceleration_t accel;
-	Gyroscope_t gyro;
-	MPU6050_t angleInfo;
-
-	HAL_I2C_Mem_Read(&hi2c1, MPU6050_READ_ADDR, 0x3B, I2C_MEMADD_SIZE_8BIT,
-			buffer, 14, 100);
-
-	accel.accel_x = (int16_t) (buffer[0] << 8) | buffer[1];
-	accel.accel_y = (int16_t) (buffer[2] << 8) | buffer[3];
-	accel.accel_z = (int16_t) (buffer[4] << 8) | buffer[5];
-
-	gyro.gyro_x = (int16_t) (buffer[8] << 8) | buffer[9];
-	gyro.gyro_y = (int16_t) (buffer[10] << 8) | buffer[11];
-	gyro.gyro_z = (int16_t) (buffer[12] << 8) | buffer[13];
-
-	angleInfo.accel = accel;
-	angleInfo.gyro = gyro;
-
-	return angleInfo;
-
-}
-
-uint8_t MPU6050_Init(uint8_t wake, uint8_t accel_mode, uint8_t gyro_mode,
-		uint8_t dlpf_mode) {
-
-	// Device check (WHO_AM_I register)
-	uint8_t chip_id;
-
-	HAL_I2C_Mem_Read(&hi2c1, MPU6050_WRITE_ADDR, 0x75, I2C_MEMADD_SIZE_8BIT,
-			&chip_id, 1, 100);
-
-	if (chip_id != 0x68) {
 		return 0;
 	}
 
-	HAL_I2C_Mem_Write(&hi2c1, MPU6050_WRITE_ADDR, 0x6B, I2C_MEMADD_SIZE_8BIT,
-			&wake, 1, 100);
+	//HAL_I2C_Mem_Read(&hi2c1, QMC5883P_READ_ADDR, 0x01, I2C_MEMADD_SIZE_8BIT,buffer, 6, 100);
+	out->x_mag = (int16_t) ((buffer[1] << 8) | buffer[0]);
+	out->y_mag = (int16_t) ((buffer[3] << 8) | buffer[2]);
+	out->z_mag = (int16_t) ((buffer[5] << 8) | buffer[4]);
 
-	HAL_I2C_Mem_Write(&hi2c1, MPU6050_WRITE_ADDR, 0x1C, I2C_MEMADD_SIZE_8BIT,
-			&accel_mode, 1, 100);
-
-	HAL_I2C_Mem_Write(&hi2c1, MPU6050_WRITE_ADDR, 0x1B, I2C_MEMADD_SIZE_8BIT,
-			&gyro_mode, 1, 100);
-
-	HAL_I2C_Mem_Write(&hi2c1, MPU6050_WRITE_ADDR, 0x1A, I2C_MEMADD_SIZE_8BIT,
-			&dlpf_mode, 1, 100);
+	return 1;
 }
 
-uint8_t MPU6050_Init_Default(void) {
+uint8_t QMC5883P_Init(uint8_t period_cfg, uint8_t set_reset, uint8_t ctrl_reg1) {
 
-	// Wake: 0x00, Accel (+-2g): 0x00, Gyro (+-250dps): 0x00, DLPF (~42Hz): 0x03
-	return MPU6050_Init(0x00, 0x00, 0x00, 0x03);
+	//Device check
+	uint8_t chip_id;
+
+	HAL_I2C_Mem_Read(&hi2c1, QMC5883P_WRITE_ADDR, 0x00, I2C_MEMADD_SIZE_8BIT,
+			&chip_id, 1, 100);
+
+	if (chip_id != 0x80) {
+		return 0;
+	}
+
+	HAL_I2C_Mem_Write(&hi2c1, QMC5883P_WRITE_ADDR, 0x29,
+	I2C_MEMADD_SIZE_8BIT, &period_cfg, 1, 100);
+
+	HAL_I2C_Mem_Write(&hi2c1, QMC5883P_WRITE_ADDR, 0x0B,
+	I2C_MEMADD_SIZE_8BIT, &set_reset, 1, 100);
+
+	HAL_I2C_Mem_Write(&hi2c1, QMC5883P_WRITE_ADDR, 0x0A,
+	I2C_MEMADD_SIZE_8BIT, &ctrl_reg1, 1, 100);
+
+	return 1;
 }
 
+uint8_t QMC5883P_Init_Default(void) {
+
+// Period: 0x06, Set/Reset: 0x08, Ctrl1 (200Hz, +-30G, Cont.): 0xCF
+	return QMC5883P_Init(0x06, 0x08, 0xCF);
+}
 /* USER CODE END 0 */
 
 /**
@@ -214,7 +155,7 @@ int main(void) {
 	MX_I2C1_Init();
 	/* USER CODE BEGIN 2 */
 
-	MPU6050_Init_Default();
+	QMC5883P_Init_Default();
 
 	/* USER CODE END 2 */
 
@@ -225,8 +166,10 @@ int main(void) {
 
 		/* USER CODE BEGIN 3 */
 
-		angle_info_g = Get_Angle_Info();
-		HAL_Delay(10);
+		QMC5883P_Get_Values(&mag_g);
+
+		HAL_Delay(1000);
+
 	}
 	/* USER CODE END 3 */
 }
@@ -261,7 +204,7 @@ void SystemClock_Config(void) {
 			| RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
 	RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
 	RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-	RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
+	RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
 	RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
 	if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK) {
