@@ -2,24 +2,27 @@ Barometre
 1- 100MS'de 1 ya da sadece çağırıldığı zaman olan 2 mod olarak ekle 
 // Kütüphane olunca fonksiyona kaç snde 1 çağırılacağı parametre olarak verilir, sadece çağırıldığı zaman 
 
-a)Full cycle gibi bir fonksiyon olur set edilir 1 kere full cycle atar.
+✅a)Full cycle gibi bir fonksiyon olur set edilir 1 kere full cycle atar.
 
-b)Devamlı x sürede bir çağırma fonksiyonu olur. 
+✅b)Devamlı x sürede bir çağırma fonksiyonu olur. 
 
-2- Filtrele
+✅2- Filtrele
 
 3- Gerçek rakım ölçümü yap
 
 4- Göreceli rakım ölçümü yap
 
-5 - Kütüphaneleştir
+✅5 - Kütüphaneleştir
 
 
+HATA KONTROLLERİNİ GELİŞTİR / CLAUDE DA VAR
+
+Sensör tamamen çökerse öldür. 1 snde 1 kontrol edilebilir sensör hayata dönmüş mü diye.	
 
 
-2- HW-123 sensörü yap
+✅2- HW-123 sensörü yap
 
-3- HW-246 sensörü yap
+✅3- HW-246 sensörü yap
 
 4- Bunları kütüphaneleştir
 

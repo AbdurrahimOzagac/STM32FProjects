@@ -22,6 +22,10 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
+#include "ds3231.h"
+#include "ds3231_port_stm32.h"
+
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -31,9 +35,6 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
-#define QMC5883P_WRITE_ADDR 	0x58
-#define QMC5883P_READ_ADDR		0x59
 
 /* USER CODE END PD */
 
@@ -47,17 +48,17 @@ I2C_HandleTypeDef hi2c1;
 
 /* USER CODE BEGIN PV */
 
-typedef struct {
+/**
+ * @brief DS3231 instance bound to hi2c1 (see DS3231_Port_STM32_Init() below).
+ *        All DS3231_Set_Time() / DS3231_Get_Time() calls for this device
+ *        must go through this handle.
+ */
+DS3231_Handle_t ds3231Handle;
 
-	int16_t x_mag;
-	int16_t y_mag;
-	int16_t z_mag;
+/** @brief Most recently read date/time snapshot, refreshed every second
+ *         in the main loop below. */
+DS3231_Time_t ds3231Time;
 
-} QMC5883P_MAGNETOMETER;
-
-QMC5883P_MAGNETOMETER mag_g;
-
-uint16_t error_count;
 
 /* USER CODE END PV */
 
@@ -72,56 +73,6 @@ static void MX_I2C1_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-uint8_t QMC5883P_Get_Values(QMC5883P_MAGNETOMETER *out) {
-
-	uint8_t buffer[6] = { 0 };
-
-	if (HAL_I2C_Mem_Read(&hi2c1, QMC5883P_READ_ADDR, 0x01, I2C_MEMADD_SIZE_8BIT,
-			buffer, 6, 100) != HAL_OK) {
-		uint32_t err = HAL_I2C_GetError(&hi2c1);
-
-		error_count++;
-
-		return 0;
-	}
-
-	//HAL_I2C_Mem_Read(&hi2c1, QMC5883P_READ_ADDR, 0x01, I2C_MEMADD_SIZE_8BIT,buffer, 6, 100);
-	out->x_mag = (int16_t) ((buffer[1] << 8) | buffer[0]);
-	out->y_mag = (int16_t) ((buffer[3] << 8) | buffer[2]);
-	out->z_mag = (int16_t) ((buffer[5] << 8) | buffer[4]);
-
-	return 1;
-}
-
-uint8_t QMC5883P_Init_Set(uint8_t period_cfg, uint8_t set_reset, uint8_t ctrl_reg1) {
-
-	//Device check
-	uint8_t chip_id;
-
-	HAL_I2C_Mem_Read(&hi2c1, QMC5883P_WRITE_ADDR, 0x00, I2C_MEMADD_SIZE_8BIT,
-			&chip_id, 1, 100);
-
-	if (chip_id != 0x80) {
-		return 0;
-	}
-
-	HAL_I2C_Mem_Write(&hi2c1, QMC5883P_WRITE_ADDR, 0x29,
-	I2C_MEMADD_SIZE_8BIT, &period_cfg, 1, 100);
-
-	HAL_I2C_Mem_Write(&hi2c1, QMC5883P_WRITE_ADDR, 0x0B,
-	I2C_MEMADD_SIZE_8BIT, &set_reset, 1, 100);
-
-	HAL_I2C_Mem_Write(&hi2c1, QMC5883P_WRITE_ADDR, 0x0A,
-	I2C_MEMADD_SIZE_8BIT, &ctrl_reg1, 1, 100);
-
-	return 1;
-}
-
-uint8_t QMC5883P_Init_Set_Default(void) {
-
-// Period: 0x06, Set/Reset: 0x08, Ctrl1 (200Hz, +-30G, Cont.): 0xCF
-	return QMC5883P_Init_Set(0x06, 0x08, 0xCF);
-}
 /* USER CODE END 0 */
 
 /**
@@ -155,7 +106,9 @@ int main(void) {
 	MX_I2C1_Init();
 	/* USER CODE BEGIN 2 */
 
-	QMC5883P_Init_Set_Default();
+	DS3231_Port_STM32_Init(&ds3231Handle, &hi2c1);
+
+	DS3231_Set_Time(&ds3231Handle, 0, 22, 22, 2, 5, 6, 13);
 
 	/* USER CODE END 2 */
 
@@ -166,8 +119,7 @@ int main(void) {
 
 		/* USER CODE BEGIN 3 */
 
-		QMC5883P_Get_Values(&mag_g);
-
+		DS3231_Get_Time(&ds3231Handle, &ds3231Time);
 		HAL_Delay(1000);
 
 	}
