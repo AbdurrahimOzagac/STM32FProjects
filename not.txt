@@ -14,11 +14,19 @@ Barometre
 
 ✅5 - Kütüphaneleştir
 
+Heading baş açısı
+
+Kalibrasyon fonksiyonları eklemnecek
+
 
 HATA KONTROLLERİNİ GELİŞTİR / CLAUDE DA VAR
 
 Sensör tamamen çökerse öldür. 1 snde 1 kontrol edilebilir sensör hayata dönmüş mü diye.	
 
+
+Magnetometer için kalibrasyon fonksiyonu ekle.
+
+1- Bunları genel kütüphane sistemine ekleyebilirsin.
 
 ✅2- HW-123 sensörü yap
 

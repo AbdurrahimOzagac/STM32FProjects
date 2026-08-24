@@ -75,6 +75,24 @@ typedef struct {
 	int16_t MD;
 } BMP180_Calib_t;
 
+
+typedef uint16_t UTemp_t;
+typedef uint32_t UPressure_t;
+
+typedef float Temp_Celcius_t;
+typedef float Pressure_Pa_t;
+typedef float Altitude_t;
+
+typedef struct {
+
+	UTemp_t u_temp;
+	UPressure_t u_pressure;
+
+	Temp_Celcius_t temp_c;
+	Pressure_Pa_t pressure_pa;
+	Altitude_t altitude;
+}BMP180_Data_t;
+
 BMP180_Calib_t my_calib;
 
 long b5_global = 0;
@@ -100,6 +118,8 @@ typedef enum {
     BMP180_STATE_WAIT_TEMP,
     BMP180_STATE_WAIT_PRESS
 } BMP180_State_t;
+
+
 
 BMP180_State_t bmp_state = BMP180_STATE_IDLE;
 uint32_t bmp_timer = 0;
@@ -207,6 +227,7 @@ long BMP180_Get_Pressure_Pa(uint32_t up, BMP180_Calib_t *calib) {
  * @param  alpha: smoothing factor (0..1). Higher = faster response, less smoothing.
  * @retval New filtered value
  */
+
 float EMA_Filter(float raw_value, float previous_filtered, float alpha) {
     return alpha * raw_value + (1.0f - alpha) * previous_filtered;
 }

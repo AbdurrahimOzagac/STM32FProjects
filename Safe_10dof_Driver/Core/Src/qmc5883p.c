@@ -16,7 +16,8 @@ int8_t QMC5883P_I2C_Init(QMC5883P_Handle_t *handle,
 
 	uint8_t chip_id = 0;
 
-	int8_t status = handle->i2c_read(QMC5883P_ADDR, 0x00, &chip_id, 1,
+	//whoami
+	int8_t status = handle->i2c_read(QMC5883P_ADDR, QMC5883P_WHOAMI, &chip_id, 1,
 			handle->user_ctx);
 
 	if (status != 0 ) return status;
@@ -50,13 +51,13 @@ int8_t QMC5883P_Set_Mode(QMC5883P_Handle_t *handle, uint8_t period_cfg,
 	return 0;
 }
 
-// Period: 0x06, Set/Reset: 0x08, Ctrl1 (200Hz, +-30G, Cont.): 0xCF
+// Period: 0x06, Set/Reset: 0x08, Ctrl1 (200Hz, +-30G, Cont.): 0xCF //DETAYLANDILILABİİLR
 int8_t QMC5883P_Set_Mode_Default(QMC5883P_Handle_t *handle) {
 	return QMC5883P_Set_Mode(handle, 0x06, 0x08, 0xCF);
 }
 
-int8_t QMC5883P_Get_Values(QMC5883P_Handle_t *handle,
-		QMC5883P_MAGNETOMETER_t *out) {
+int8_t QMC5883P_Get_Magnetic_Data(QMC5883P_Handle_t *handle,
+		QMC5883P_MAGNETOMETER_t *out_mag) {
 
 	uint8_t status = 0;
 
@@ -67,9 +68,11 @@ int8_t QMC5883P_Get_Values(QMC5883P_Handle_t *handle,
 	if (status != 0)
 		return status;
 
-	out->x_mag = (int16_t) ((buffer[1] << 8) | buffer[0]);
-	out->y_mag = (int16_t) ((buffer[3] << 8) | buffer[2]);
-	out->z_mag = (int16_t) ((buffer[5] << 8) | buffer[4]);
+	out_mag->x_mag = (int16_t) ((buffer[1] << 8) | buffer[0]);
+	out_mag->y_mag = (int16_t) ((buffer[3] << 8) | buffer[2]);
+	out_mag->z_mag = (int16_t) ((buffer[5] << 8) | buffer[4]);
 
 	return 0;
 }
+
+//Kalibrasyon fonksiyonları

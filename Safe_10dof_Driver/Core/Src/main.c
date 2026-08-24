@@ -21,6 +21,8 @@
 #include "main.h"
 #include "qmc5883p.h"
 #include "qmc5883p_port_stm32f4.h"
+#include "mpu6050.h"
+#include "mpu6050_port_stm32f4.h"
 
 
 /* Private includes ----------------------------------------------------------*/
@@ -50,6 +52,9 @@ I2C_HandleTypeDef hi2c1;
 
 QMC5883P_Handle_t qmc5883_handle;
 QMC5883P_MAGNETOMETER_t magnetometer_data;
+
+MPU6050_Handle_t mpu6050_handle;
+MPU6050_Inertial_t inertial_data;
 
 /* USER CODE END PV */
 
@@ -101,6 +106,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   QMC5883P_Port_STM32_Init(&qmc5883_handle, &hi2c1);
+  MPU6050_Port_STM32_Init(&mpu6050_handle, &hi2c1);
 
   /* USER CODE END 2 */
 
@@ -112,7 +118,8 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
-	  QMC5883P_Get_Values(&qmc5883_handle, &magnetometer_data);
+	  MPU6050_Get_Inertial_Data(&mpu6050_handle, &inertial_data);
+	  QMC5883P_Get_Magnetic_Data(&qmc5883_handle, &magnetometer_data);
 	  HAL_Delay(100);
   }
   /* USER CODE END 3 */
