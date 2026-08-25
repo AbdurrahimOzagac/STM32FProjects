@@ -108,6 +108,7 @@ int main(void)
   QMC5883P_Port_STM32_Init(&qmc5883_handle, &hi2c1);
   MPU6050_Port_STM32_Init(&mpu6050_handle, &hi2c1);
 
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
