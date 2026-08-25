@@ -87,9 +87,9 @@ static void MX_I2C1_Init(void);
 Acceleration_t Get_Acceleration(void);
 Gyroscope_t Get_Gyroscope(void);
 MPU6050_t Get_Angle_Info(void);
-void MPU6050_Init(uint8_t wake, uint8_t accel_mode, uint8_t gyro_mode,
+uint8_t MPU6050_Init(uint8_t wake, uint8_t accel_mode, uint8_t gyro_mode,
 		uint8_t dlpf_mode);
-void MPU6050_Init_Default(void);
+uint8_t MPU6050_Init_Default(void);
 
 Acceleration_t Get_Acceleration(void) {
 
@@ -173,6 +173,8 @@ uint8_t MPU6050_Init(uint8_t wake, uint8_t accel_mode, uint8_t gyro_mode,
 
 	HAL_I2C_Mem_Write(&hi2c1, MPU6050_WRITE_ADDR, 0x1A, I2C_MEMADD_SIZE_8BIT,
 			&dlpf_mode, 1, 100);
+
+	return 1;
 }
 
 uint8_t MPU6050_Init_Default(void) {

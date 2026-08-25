@@ -23,6 +23,8 @@
 #include "qmc5883p_port_stm32f4.h"
 #include "mpu6050.h"
 #include "mpu6050_port_stm32f4.h"
+#include "bmp180.h"
+#include "bmp180_port_stm32f4.h"
 
 
 /* Private includes ----------------------------------------------------------*/
@@ -55,6 +57,9 @@ QMC5883P_MAGNETOMETER_t magnetometer_data;
 
 MPU6050_Handle_t mpu6050_handle;
 MPU6050_Inertial_t inertial_data;
+
+BMP180_Handle_t bmp180_handle;
+BMP180_Data_t barometer_data;
 
 /* USER CODE END PV */
 
@@ -107,6 +112,7 @@ int main(void)
 
   QMC5883P_Port_STM32_Init(&qmc5883_handle, &hi2c1);
   MPU6050_Port_STM32_Init(&mpu6050_handle, &hi2c1);
+  BMP180_Port_STM32_Init(&bmp180_handle, &hi2c1);
 
 
   /* USER CODE END 2 */
@@ -119,8 +125,11 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
 
+	  BMP180_Poll(&bmp180_handle);
+
 	  MPU6050_Get_Inertial_Data(&mpu6050_handle, &inertial_data);
 	  QMC5883P_Get_Magnetic_Data(&qmc5883_handle, &magnetometer_data);
+	  BMP180_Get_Data(&bmp180_handle, &barometer_data);
 	  HAL_Delay(100);
   }
   /* USER CODE END 3 */
