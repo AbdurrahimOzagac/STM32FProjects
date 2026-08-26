@@ -128,9 +128,11 @@ int main(void)
 	  BMP180_Poll(&bmp180_handle);
 
 	  MPU6050_Get_Inertial_Data(&mpu6050_handle, &inertial_data);
+	  HAL_Delay(1);
 	  QMC5883P_Get_Magnetic_Data(&qmc5883_handle, &magnetometer_data);
+	  HAL_Delay(1);
 	  BMP180_Get_Data(&bmp180_handle, &barometer_data);
-	  HAL_Delay(100);
+	  HAL_Delay(1);
   }
   /* USER CODE END 3 */
 }
