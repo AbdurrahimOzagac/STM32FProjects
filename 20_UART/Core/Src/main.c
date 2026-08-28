@@ -113,11 +113,11 @@ int main(void)
     /* USER CODE END WHILE */
 
 	  //TRANSMIT HELLO WORLD
-	  //HAL_UART_Transmit(&huart2, (uint8_t*)helloWorld, strlen(helloWorld), HAL_MAX_DELAY);
-	  //HAL_Delay(1000);
+	  HAL_UART_Transmit(&huart2, (uint8_t*)helloWorld, strlen(helloWorld), HAL_MAX_DELAY);
+	  HAL_Delay(500);
 
 	  //RECEIVE DATA
-	  HAL_UART_Receive(&huart2, (uint8_t*)receiveBuffer, 10, HAL_MAX_DELAY);
+	  //HAL_UART_Receive(&huart2, (uint8_t*)receiveBuffer, 10, HAL_MAX_DELAY);
 
     /* USER CODE BEGIN 3 */
   }

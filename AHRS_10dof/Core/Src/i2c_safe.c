@@ -30,6 +30,65 @@ static const uint32_t backoff_delays[] = { 0, 5, 20, 50, 200, 500, 1000 };
  * @brief  Core safe execution runner with circuit breaker and retry logic.
  */
 
+/**
+ * @brief  TEST AMAÇLI: I2C1 (PB6=SCL, PB7=SDA) için sabit bus recovery fonksiyonu.
+ */
+void I2C1_BusRecovery_Test(void)
+{
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+    __HAL_RCC_GPIOB_CLK_ENABLE();
+
+    /* 1) PB6/PB7'yi Open-Drain GPIO çıkışına al */
+    GPIO_InitStruct.Mode  = GPIO_MODE_OUTPUT_OD;
+    GPIO_InitStruct.Pull  = GPIO_PULLUP;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+
+    GPIO_InitStruct.Pin = GPIO_PIN_6; // SCL
+    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+    GPIO_InitStruct.Pin = GPIO_PIN_7; // SDA
+    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
+    HAL_Delay(1);
+
+    /* 2) SCL'i 9 kez toggle'la */
+    for (uint8_t i = 0; i < 9; i++)
+    {
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
+        HAL_Delay(1);
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
+        HAL_Delay(1);
+
+        if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_7) == GPIO_PIN_SET)
+        {
+            break; // SDA serbest kaldı, erken çık
+        }
+    }
+
+    /* 3) Manuel STOP condition */
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);
+    HAL_Delay(1);
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
+    HAL_Delay(1);
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
+    HAL_Delay(1);
+
+    /* 4) Pinleri I2C1 Alternate Function moduna geri döndür */
+    GPIO_InitStruct.Mode      = GPIO_MODE_AF_OD;
+    GPIO_InitStruct.Pull      = GPIO_PULLUP;
+    GPIO_InitStruct.Speed     = GPIO_SPEED_FREQ_HIGH;
+    GPIO_InitStruct.Alternate = GPIO_AF4_I2C1;
+
+    GPIO_InitStruct.Pin = GPIO_PIN_6;
+    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+    GPIO_InitStruct.Pin = GPIO_PIN_7;
+    HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+}
+
 static int8_t I2Csafe_Run(I2C_HandleTypeDef *hi2c,
 		HAL_StatusTypeDef (*HAL_I2C_Mem_Func)(I2C_HandleTypeDef *hi2c,
 				uint16_t DevAddress, uint16_t MemAddress, uint16_t MemAddSize,
@@ -60,6 +119,8 @@ static int8_t I2Csafe_Run(I2C_HandleTypeDef *hi2c,
 
 	HAL_I2C_DeInit(hi2c);
 	HAL_Delay(I2CSAFE_RETRY_DELAY_MS);
+	I2C1_BusRecovery_Test();
+	HAL_Delay(I2CSAFE_RETRY_DELAY_MS);
 	HAL_I2C_Init(hi2c);
 
 	if (device_health[addr_index].fail_level < MAX_FAIL_LEVEL) {
@@ -78,8 +139,10 @@ static int8_t I2Csafe_Run(I2C_HandleTypeDef *hi2c,
  */
 int8_t I2C_Read_Safe(I2C_HandleTypeDef *hi2c, uint16_t DevAddress,
 		uint16_t MemAddress, uint16_t MemAddSize, uint8_t *pData, uint16_t Size) {
-	return I2Csafe_Run(hi2c, HAL_I2C_Mem_Read, DevAddress, MemAddress,
-			MemAddSize, pData, Size);
+	return I2Csafe_Run(hi2c, HAL_I2C_Mem_Read, DevAddress, MemAddress, MemAddSize, pData, Size);
+
+	//debug code
+//	return HAL_I2C_Mem_Read(hi2c, DevAddress, MemAddress, MemAddSize, pData, Size, I2CSAFE_TIMEOUT);
 }
 
 /**
@@ -89,6 +152,8 @@ int8_t I2C_Read_Safe(I2C_HandleTypeDef *hi2c, uint16_t DevAddress,
 int8_t I2C_Write_Safe(I2C_HandleTypeDef *hi2c, uint16_t DevAddress,
 		uint16_t MemAddress, uint16_t MemAddSize, uint8_t *pData, uint16_t Size) {
 
-	return I2Csafe_Run(hi2c, HAL_I2C_Mem_Write, DevAddress, MemAddress,
-			MemAddSize, pData, Size);
+	return I2Csafe_Run(hi2c, HAL_I2C_Mem_Write, DevAddress, MemAddress, MemAddSize, pData, Size);
+
+	//debug code
+//	return HAL_I2C_Mem_Write(hi2c, DevAddress, MemAddress, MemAddSize, pData, Size, I2CSAFE_TIMEOUT);
 }

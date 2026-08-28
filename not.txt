@@ -8,9 +8,9 @@ Barometre
 
 ✅2- Filtrele
 
-3- Gerçek rakım ölçümü yap
+✅3- Gerçek rakım ölçümü yap
 
-4- Göreceli rakım ölçümü yap
+✅4- Göreceli rakım ölçümü yap
 
 ✅5 - Kütüphaneleştir
 
@@ -19,9 +19,8 @@ Heading baş açısı
 Kalibrasyon fonksiyonları eklemnecek
 
 
-HATA KONTROLLERİNİ GELİŞTİR / CLAUDE DA VAR
+mahony ve kalman araştır. aynı projeye ekle.
 
-Sensör tamamen çökerse öldür. 1 snde 1 kontrol edilebilir sensör hayata dönmüş mü diye.	
 
 
 Magnetometer için kalibrasyon fonksiyonu ekle.
