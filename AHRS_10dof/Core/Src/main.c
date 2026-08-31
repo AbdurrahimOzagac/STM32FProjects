@@ -73,25 +73,9 @@ BMP180_Data_t barometer_data;
 Madgwick_t madgwick_data;
 EulerAngles_t madgwick_euler;
 
-Mahony_t mahony_data;
-Mahony_EulerAngles_t mahony_euler;
-
-MagCal_t mag_cal_data;
-
-float pure_compass_yaw1;
-float pure_compass_yaw2;
-
-float body_accel_x;
-float body_accel_y;
-float body_accel_z;
-
-float body_gyro_x;
-float body_gyro_y;
-float body_gyro_z;
-
-float body_magx;
-float body_magy;
-float body_magz;
+float ax, ay, az;
+float gx, gy, gz;
+float mx, my, mz;
 
 /* USER CODE END PV */
 
@@ -102,44 +86,6 @@ static void MX_I2C1_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
-
-float Get_Pure_Yaw(float mag_x, float mag_y) {
-
-	/* Calculate heading using arctangent */
-	float heading = atan2f(mag_y, mag_x) * (180.0f / 3.14159265f);
-
-	/* Normalize angle to 0 - 360 range */
-	if (heading < 0.0f) {
-		heading += 360.0f;
-	}
-
-	return heading;
-}
-
-float Get_Tilt_Compensated_Yaw(float mag_x, float mag_y, float mag_z,
-		float roll_deg, float pitch_deg) {
-
-	/* Convert Euler angles from degrees to radians */
-	float roll_rad = roll_deg * (3.14159265f / 180.0f);
-	float pitch_rad = pitch_deg * (3.14159265f / 180.0f);
-
-	/* Apply tilt compensation formula to project X and Y onto the horizontal plane */
-	float comp_mag_x = (mag_x * cosf(pitch_rad)) + (mag_z * sinf(pitch_rad));
-
-	float comp_mag_y = (mag_x * sinf(roll_rad) * sinf(pitch_rad))
-			+ (mag_y * cosf(roll_rad))
-			- (mag_z * sinf(roll_rad) * cosf(pitch_rad));
-
-	/* Calculate heading using the compensated magnetic values */
-	float heading = atan2f(comp_mag_y, comp_mag_x) * (180.0f / 3.14159265f);
-
-	/* Normalize angle to 0 - 360 range */
-	if (heading < 0.0f) {
-		heading += 360.0f;
-	}
-
-	return heading;
-}
 
 /* USER CODE END PFP */
 
@@ -181,11 +127,7 @@ int main(void) {
 	MX_USART2_UART_Init();
 	/* USER CODE BEGIN 2 */
 
-	HAL_TIM_Base_Start(&htim2);
-	uint32_t last_micros = __HAL_TIM_GET_COUNTER(&htim2);
-
-	HAL_Delay(500);
-
+	///INIT CENSORS
 	while (1) {
 
 		int8_t err1 = MPU6050_Port_STM32_Init(&mpu6050_handle, &hi2c1);
@@ -197,31 +139,39 @@ int main(void) {
 
 		HAL_Delay(100);
 	}
+	/////////////////
 
-	MagCal_Start(&mag_cal_data);
 
-	uint32_t cal_start_tick = HAL_GetTick();
-	const uint32_t CAL_DURATION_MS = 10;
-	const uint16_t CAL_LEDS = GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14
-			| GPIO_PIN_15;
+	///MAGNETOMETER CALIBRATION
+	MagCal_t mag_cal;
+	MagCal_Start(&mag_cal); //
 
-	while ((HAL_GetTick() - cal_start_tick) < CAL_DURATION_MS) {
+	uint32_t start_time = HAL_GetTick();
+	// 40 saniye boyunca kartı her yöne (sekiz çizer gibi) 3 boyutta çevir
+	while ((HAL_GetTick() - start_time) < 50000) {
 		QMC5883P_Get_Magnetic_Data(&qmc5883p_handle, &magnetic_data);
-		MagCal_Update(&mag_cal_data, magnetic_data.x_mag, magnetic_data.y_mag,
-				magnetic_data.z_mag);
-
-		HAL_GPIO_TogglePin(GPIOD, CAL_LEDS);
+		MagCal_Update(&mag_cal, magnetic_data.x_mag, magnetic_data.y_mag,
+				magnetic_data.z_mag); //
 		HAL_Delay(10);
 	}
 
-	HAL_GPIO_WritePin(GPIOD, CAL_LEDS, GPIO_PIN_RESET);
+	MagCal_Finish(&mag_cal);
+	/////////////////
 
-	MagCal_Finish(&mag_cal_data);
 
-	Madgwick_Init(&madgwick_data, 0.4f);
-	Mahony_Init(&mahony_data, 2.0f, 0.0f);
+	///INIT MADGWICK
+	Madgwick_Init(&madgwick_data, 0.1f);
 
-	Telemetry_Init(&huart2, 50);
+	///INIT TELEMETRY
+	Telemetry_Init(&huart2, 100);
+
+	///START TIMER
+
+	HAL_TIM_Base_Start(&htim2);
+	uint32_t last_micros = __HAL_TIM_GET_COUNTER(&htim2);
+
+	/////////////////
+
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
@@ -231,66 +181,45 @@ int main(void) {
 
 		/* USER CODE BEGIN 3 */
 
-		/* Convert microseconds to seconds */
+		///UPDATE CENSOR DATA
+		MPU6050_Get_Inertial_Data(&mpu6050_handle, &inertial_data);
+		QMC5883P_Get_Magnetic_Data(&qmc5883p_handle, &magnetic_data);
+		BMP180_Get_Data(&bmp180_handle, &barometer_data);
 
+		///UPDATE DELTATIME
 		uint32_t current_micros = __HAL_TIM_GET_COUNTER(&htim2);
 		uint32_t delta_micros = current_micros - last_micros;
 		last_micros = current_micros;
-
 		float dt = (float) delta_micros / 1000000.0f;
 
-		MPU6050_Get_Inertial_Data(&mpu6050_handle, &inertial_data);
-		QMC5883P_Get_Magnetic_Data(&qmc5883p_handle, &magnetic_data);
+		//ALLIGN ORIANTIONS FOR THIS BOARD
+		ax = (float) inertial_data.accel.accel_y;
+		ay = -(float) inertial_data.accel.accel_x;
+		az = (float) inertial_data.accel.accel_z;
 
-		/* Önce hard-iron/soft-iron kalibrasyonunu uygula */
-		float cal_magx, cal_magy, cal_magz;
-		MagCal_Apply(&mag_cal_data, magnetic_data.x_mag, magnetic_data.y_mag,
-				magnetic_data.z_mag, &cal_magx, &cal_magy, &cal_magz);
+		gx = (float) inertial_data.gyro.gyro_y;
+		gy = -(float) inertial_data.gyro.gyro_x;
+		gz = (float) inertial_data.gyro.gyro_z;
 
-		// 1. MPU6050 -> BOARD AXIS CONVERSION
-		// Inverting X and Y to fix reversed pitch and roll
-		body_accel_x = inertial_data.accel.accel_y;
-		body_accel_y = inertial_data.accel.accel_x;
-		body_accel_z = inertial_data.accel.accel_z;
+		mx = (float) magnetic_data.x_mag;
+		my = (float) magnetic_data.y_mag;
+		mz = (float) magnetic_data.z_mag;
 
-		body_gyro_x = inertial_data.gyro.gyro_y;
-		body_gyro_y = inertial_data.gyro.gyro_x;
-		body_gyro_z = inertial_data.gyro.gyro_z;
+		///UPDATE QUATERNION & EULER
+		if (dt > 0.0f && dt < 0.5f) {
 
-		// 2. QMC5883P -> BOARD AXIS CONVERSION
-		// Matching magnetometer to the inverted X and Y axes for sensor fusion stability
-		// QMC Physical: X=Back, Y=Right, Z=Up
-		body_magx = cal_magx;
-		body_magy = cal_magy;
-		body_magz = cal_magz;
+			Madgwick_Process_Raw_Data(&madgwick_data, gx, gy, gz, ax, ay, az,
+					mx, my, mz, dt);
 
-		body_magx = -magnetic_data.y_mag;
-		body_magy = -magnetic_data.x_mag;
-		body_magz = magnetic_data.z_mag;
-
-		if (dt > 0.0f && dt < 1.0f) {
-			Madgwick_Process_Raw_Data(&madgwick_data, body_accel_x,
-					body_accel_y, body_accel_z, body_gyro_x, body_gyro_y,
-					body_gyro_z, body_magx, body_magy, body_magz, dt);
-
-			Mahony_Process_Raw_Data(&mahony_data, body_accel_x, body_accel_y,
-					body_accel_z, body_gyro_x, body_gyro_y, body_gyro_z,
-					body_magx, body_magy, body_magz, dt);
+			madgwick_euler = QuaternionToEulerAngle(madgwick_data.q);
 		}
 
-		madgwick_euler = QuaternionToEulerAngle(madgwick_data.q);
-		mahony_euler = Mahony_QuaternionToEulerAngle(mahony_data.q);
-
-		pure_compass_yaw1 = Get_Tilt_Compensated_Yaw(body_magx, body_magy,
-				body_magz, madgwick_euler.roll, madgwick_euler.pitch);
-
-		BMP180_Poll(&bmp180_handle);
-		BMP180_Get_Data(&bmp180_handle, &barometer_data);
-
+		///UPDATE TELEMETRY
 		Telemetry_Update(madgwick_euler.roll, madgwick_euler.pitch,
-				madgwick_euler.yaw, barometer_data.altitude_m);
+				madgwick_euler.yaw, 1000.0f);
 
-		HAL_Delay(25);
+		///DELAY
+		HAL_Delay(1);
 	}
 	/* USER CODE END 3 */
 }

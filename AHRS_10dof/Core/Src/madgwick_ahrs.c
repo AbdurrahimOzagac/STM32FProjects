@@ -33,7 +33,7 @@ void Madgwick_Init(Madgwick_t *ahrs, float beta_val) {
 /* Core 9-DOF Madgwick update. Operates directly on the quaternion
  * stored in the Madgwick_t instance, using its own beta gain
  * instead of relying on any global/shared state. */
-static void MadgwickAHRSupdate(Madgwick_t *ahrs, float gx, float gy, float gz,
+void MadgwickAHRSupdate(Madgwick_t *ahrs, float gx, float gy, float gz,
                                 float ax, float ay, float az,
                                 float mx, float my, float mz, float dt) {
 
@@ -126,28 +126,98 @@ static void MadgwickAHRSupdate(Madgwick_t *ahrs, float gx, float gy, float gz,
     ahrs->q.q3 = q3 * recipNorm;
 }
 
+void MadgwickAHRSupdate6dof(Madgwick_t *ahrs, float gx, float gy, float gz,
+                                  float ax, float ay, float az, float dt) {
+    float q0 = ahrs->q.q0;
+    float q1 = ahrs->q.q1;
+    float q2 = ahrs->q.q2;
+    float q3 = ahrs->q.q3;
+    float recipNorm;
+    float s0, s1, s2, s3;
+    float qDot1, qDot2, qDot3, qDot4;
+    float _2q0, _2q1, _2q2, _2q3, _4q0, _4q1, _4q2, _8q1, _8q2;
+
+    if ((ax == 0.0f) && (ay == 0.0f) && (az == 0.0f)) return;
+
+    /* Rate of change of quaternion from gyroscope */
+    qDot1 = 0.5f * (-q1 * gx - q2 * gy - q3 * gz);
+    qDot2 = 0.5f * (q0 * gx + q2 * gz - q3 * gy);
+    qDot3 = 0.5f * (q0 * gy - q1 * gz + q3 * gx);
+    qDot4 = 0.5f * (q0 * gz + q1 * gy - q2 * gx);
+
+    /* Normalise accelerometer measurement */
+    recipNorm = invSqrt(ax * ax + ay * ay + az * az);
+    ax *= recipNorm;
+    ay *= recipNorm;
+    az *= recipNorm;
+
+    /* Auxiliary variables to avoid repeated arithmetic */
+    _2q0 = 2.0f * q0;
+    _2q1 = 2.0f * q1;
+    _2q2 = 2.0f * q2;
+    _2q3 = 2.0f * q3;
+    _4q0 = 4.0f * q0;
+    _4q1 = 4.0f * q1;
+    _4q2 = 4.0f * q2;
+    _8q1 = 8.0f * q1;
+    _8q2 = 8.0f * q2;
+
+    /* Gradient decent algorithm corrective step (Gravity vector only) */
+    s0 = _4q0 * q2 * q2 + _2q2 * ax + _4q0 * q1 * q1 - _2q1 * ay;
+    s1 = _4q1 * q3 * q3 - _2q3 * ax + 4.0f * q0 * q0 * q1 - _2q0 * ay - _4q1 + _8q1 * q1 * q1 + _8q1 * q2 * q2 + _4q1 * az;
+    s2 = 4.0f * q0 * q0 * q2 + _2q0 * ax + _4q2 * q3 * q3 - _2q3 * ay - _4q2 + _8q2 * q1 * q1 + _8q2 * q2 * q2 + _4q2 * az;
+    s3 = 4.0f * q1 * q1 * q3 - _2q1 * ax + 4.0f * q2 * q2 * q3 - _2q2 * ay;
+
+    recipNorm = invSqrt(s0 * s0 + s1 * s1 + s2 * s2 + s3 * s3);
+    s0 *= recipNorm;
+    s1 *= recipNorm;
+    s2 *= recipNorm;
+    s3 *= recipNorm;
+
+    /* Apply feedback step */
+    qDot1 -= ahrs->beta * s0;
+    qDot2 -= ahrs->beta * s1;
+    qDot3 -= ahrs->beta * s2;
+    qDot4 -= ahrs->beta * s3;
+
+    /* Integrate rate of change of quaternion to yield quaternion */
+    q0 += qDot1 * dt;
+    q1 += qDot2 * dt;
+    q2 += qDot3 * dt;
+    q3 += qDot4 * dt;
+
+    /* Normalise quaternion */
+    recipNorm = invSqrt(q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3);
+    ahrs->q.q0 = q0 * recipNorm;
+    ahrs->q.q1 = q1 * recipNorm;
+    ahrs->q.q2 = q2 * recipNorm;
+    ahrs->q.q3 = q3 * recipNorm;
+}
+
 void Madgwick_Process_Raw_Data(
     Madgwick_t *ahrs,
-    int16_t ax, int16_t ay, int16_t az,
-    int16_t gx, int16_t gy, int16_t gz,
-    int16_t mx, int16_t my, int16_t mz,
+    float gx, float gy, float gz,
+    float ax, float ay, float az,
+    float mx, float my, float mz,
     float dt)
 {
-    float f_ax = (float)ax / ACCEL_SCALE;
-    float f_ay = (float)ay / ACCEL_SCALE;
-    float f_az = (float)az / ACCEL_SCALE;
+    float f_ax = ax / ACCEL_SCALE;
+    float f_ay = ay / ACCEL_SCALE;
+    float f_az = az / ACCEL_SCALE;
 
-    float f_gx = ((float)gx / GYRO_SCALE) * DEG_TO_RAD;
-    float f_gy = ((float)gy / GYRO_SCALE) * DEG_TO_RAD;
-    float f_gz = ((float)gz / GYRO_SCALE) * DEG_TO_RAD;
+    float f_gx = (gx / GYRO_SCALE) * DEG_TO_RAD;
+    float f_gy = (gy / GYRO_SCALE) * DEG_TO_RAD;
+    float f_gz = (gz / GYRO_SCALE) * DEG_TO_RAD;
 
     /* Magnetometer values are normalized inside MadgwickAHRSupdate,
      * so raw units (not converted to gauss) are fine as-is. */
-    float f_mx = (float)mx;
-    float f_my = (float)my;
-    float f_mz = (float)mz;
+    float f_mx = mx;
+    float f_my = my;
+    float f_mz = mz;
 
-    MadgwickAHRSupdate(ahrs, f_gx, f_gy, f_gz, f_ax, f_ay, f_az, f_mx, f_my, f_mz, dt);
+//    MadgwickAHRSupdate(ahrs, f_gx, f_gy, f_gz, f_ax, f_ay, f_az, f_mx, f_my, f_mz, dt);
+    MadgwickAHRSupdate6dof(ahrs, f_gx, f_gy, f_gz, f_ax, f_ay, f_az, dt);
+
 }
 
 EulerAngles_t QuaternionToEulerAngle(Quaternion_t quaternion) {

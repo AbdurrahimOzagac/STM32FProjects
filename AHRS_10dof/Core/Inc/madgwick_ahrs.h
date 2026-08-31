@@ -27,10 +27,18 @@ void Madgwick_Init(Madgwick_t *ahrs, float beta_val);
 
 void Madgwick_Process_Raw_Data(
     Madgwick_t *ahrs,
-    int16_t ax, int16_t ay, int16_t az,
-    int16_t gx, int16_t gy, int16_t gz,
-    int16_t mx, int16_t my, int16_t mz,
+    float gx, float gy, float gz,
+    float ax, float ay, float az,
+    float mx, float my, float mz,
     float dt);
+
+void MadgwickAHRSupdate(Madgwick_t *ahrs, float gx, float gy, float gz,
+                                float ax, float ay, float az,
+                                float mx, float my, float mz, float dt);
+
+void MadgwickAHRSupdate6dof(Madgwick_t *ahrs, float gx, float gy, float gz,
+                                  float ax, float ay, float az, float dt);
+
 
 EulerAngles_t QuaternionToEulerAngle(Quaternion_t quaternion);
 

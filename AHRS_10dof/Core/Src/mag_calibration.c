@@ -70,3 +70,16 @@ void MagCal_Apply(const MagCal_t *cal, int16_t raw_x, int16_t raw_y,
     *out_y = ((float) raw_y - cal->offset_y) * cal->scale_y;
     *out_z = ((float) raw_z - cal->offset_z) * cal->scale_z;
 }
+
+void MagCal_Set_Manual(MagCal_t *cal,
+                       float off_x, float off_y, float off_z,
+                       float sc_x, float sc_y, float sc_z) {
+    cal->offset_x = off_x;
+    cal->offset_y = off_y;
+    cal->offset_z = off_z;
+    cal->scale_x  = sc_x;
+    cal->scale_y  = sc_y;
+    cal->scale_z  = sc_z;
+    cal->is_calibrating = 0;
+    cal->is_calibrated  = 1;
+}
