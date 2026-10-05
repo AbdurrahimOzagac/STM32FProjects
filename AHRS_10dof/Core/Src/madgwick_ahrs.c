@@ -215,8 +215,8 @@ void Madgwick_Process_Raw_Data(
     float f_my = my;
     float f_mz = mz;
 
-//    MadgwickAHRSupdate(ahrs, f_gx, f_gy, f_gz, f_ax, f_ay, f_az, f_mx, f_my, f_mz, dt);
-    MadgwickAHRSupdate6dof(ahrs, f_gx, f_gy, f_gz, f_ax, f_ay, f_az, dt);
+    MadgwickAHRSupdate(ahrs, f_gx, f_gy, f_gz, f_ax, f_ay, f_az, f_mx, f_my, f_mz, dt);
+//    MadgwickAHRSupdate6dof(ahrs, f_gx, f_gy, f_gz, f_ax, f_ay, f_az, dt);
 
 }
 

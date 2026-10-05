@@ -38,3 +38,27 @@ Magnetometer için kalibrasyon fonksiyonu ekle.
 6- Python basit 3D renderer yap
 
 7- Projeyi pythonda görünür hale getir
+
+
+
+
+Yani fonksiyon sessizce "kalibrasyon başarılı" diyor ama ürettiği matris pratikte kullanılamaz, gürültüyü inanılmaz derecede yükseltiyor. Sebep matematiksel: kovaryans matrisi neredeyse rank-2 (bir eksende varyans ~0'a yakın), bu ekseni normalize edip tersini alırken o eksendeki kazanç sonsuza yaklaşıyor. trace == 0.0f kontrolü sadece tam sıfır durumunu yakalıyor, "neredeyse dejenere" durumu hiç yakalanmıyor.
+
+Bu, sahada gerçekten olur: kullanıcı kalibrasyon sırasında cihazı her eksende çevirmeyi unutursa (çoğu IMU/mag kalibrasyon UX'inde sık yaşanan bir hata), attitude/heading hesabına giden veri sessizce bozulur — hata mesajı da yok.
+
+Önerdiğim düzeltme: MagCal_Finish içinde, iterasyondan önce kovaryans matrisinin ne kadar "yassı" olduğunu ucuza kontrol edebilirsin (tam özdeğer hesabına gerek yok):
+
+c
+// cov[][] hesaplandıktan hemen sonra, Newton-Schulz'dan önce:
+float det = cov[0][0]*(cov[1][1]*cov[2][2] - cov[1][2]*cov[2][1])
+          - cov[0][1]*(cov[1][0]*cov[2][2] - cov[1][2]*cov[2][0])
+          + cov[0][2]*(cov[1][0]*cov[2][1] - cov[1][1]*cov[2][0]);
+float mean_var = trace / 3.0f;
+if (det < 0.01f * mean_var * mean_var * mean_var) {
+    cal->is_calibrated = 0;
+    return -2; // yetersiz 3D kapsama - kullanıcıyı cihazı her eksende cevirmeye yonlendir
+}
+
+(0.01 eşiği kaba bir başlangıç — kendi sensörünle gerçek veri toplayıp kalibre etmen gerekir.)
+
+Genel olarak: matematik doğru, temel akış temiz, ama üretimde kullanmadan önce mutlaka bir "yeterli 3D kapsama var mı" kontrolü eklemen gerekiyor — şu anki haliyle kötü bir kalibrasyon oturumu sessizce geçerli görünüp uçuşta yanlış heading üretebilir.

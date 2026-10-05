@@ -77,6 +77,8 @@ float ax, ay, az;
 float gx, gy, gz;
 float mx, my, mz;
 
+float heading;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -125,40 +127,79 @@ int main(void) {
 	MX_I2C1_Init();
 	MX_TIM2_Init();
 	MX_USART2_UART_Init();
+
 	/* USER CODE BEGIN 2 */
 
-	///INIT CENSORS
+	///INIT SENSORS
 	while (1) {
-
 		int8_t err1 = MPU6050_Port_STM32_Init(&mpu6050_handle, &hi2c1);
 		int8_t err2 = QMC5883P_Port_STM32_Init(&qmc5883p_handle, &hi2c1);
 		int8_t err3 = BMP180_Port_STM32_Init(&bmp180_handle, &hi2c1);
 
 		if (err1 == 0 && err2 == 0 && err3 == 0)
 			break;
-
 		HAL_Delay(100);
 	}
-	/////////////////
 
+	// Debugger'in bu degiskeni silmesini engellemek icin 'volatile' yapiyoruz
+	volatile MagCal_t mag_cal;
 
-	///MAGNETOMETER CALIBRATION
-	MagCal_t mag_cal;
-	MagCal_Start(&mag_cal); //
+	/* =======================================================================
+	 ADIM 1: KALİBRASYON (DEBUGGER VE LED MODU)
+	 =======================================================================
+	 MagCal_Start((MagCal_t*) &mag_cal);
 
-	uint32_t start_time = HAL_GetTick();
-	// 40 saniye boyunca kartı her yöne (sekiz çizer gibi) 3 boyutta çevir
-	while ((HAL_GetTick() - start_time) < 50000) {
-		QMC5883P_Get_Magnetic_Data(&qmc5883p_handle, &magnetic_data);
-		MagCal_Update(&mag_cal, magnetic_data.x_mag, magnetic_data.y_mag,
-				magnetic_data.z_mag); //
-		HAL_Delay(10);
-	}
+	 // Baslangicta tum LED'leri sondur
+	 HAL_GPIO_WritePin(GPIOD,
+	 GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15, GPIO_PIN_RESET);
 
-	MagCal_Finish(&mag_cal);
-	/////////////////
+	 uint32_t start_time = HAL_GetTick();
 
+	 // 40 saniye (40000 ms) boyunca döner
+	 while ((HAL_GetTick() - start_time) < 40000) {
+	 QMC5883P_Get_Magnetic_Data(&qmc5883p_handle, &magnetic_data);
+	 MagCal_Update((MagCal_t*) &mag_cal, magnetic_data.x_mag,
+	 magnetic_data.y_mag, magnetic_data.z_mag);
 
+	 // Yesil LED'i (PD12) yanip sondur (Islemin devam ettigini gosterir)
+	 HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_12);
+
+	 HAL_Delay(133);
+	 }
+
+	 // Islem bitti, once butun LED'leri tekrar kapatalim
+	 HAL_GPIO_WritePin(GPIOD,
+	 GPIO_PIN_12 | GPIO_PIN_13 | GPIO_PIN_14 | GPIO_PIN_15, GPIO_PIN_RESET);
+
+	 if (MagCal_Finish((MagCal_t*) &mag_cal) == 0) {
+	 // KALİBRASYON BAŞARILI! Yesil LED sabit yansin.
+	 HAL_GPIO_WritePin(GPIOD, GPIO_PIN_12, GPIO_PIN_SET);
+
+	 // LÜTFEN AŞAĞIDAKİ SATIRA BREAKPOINT (KIRMIZI NOKTA) KOY:
+	 __NOP();
+	 } else {
+	 // KALİBRASYON BAŞARISIZ (Yeterince çevirmedin) Kirmizi LED (PD14) yansin.
+	 HAL_GPIO_WritePin(GPIOD, GPIO_PIN_14, GPIO_PIN_SET);
+	 __NOP();
+	 }
+
+	 // Değerleri okuyabilmen için sistemi kilitliyoruz.
+	 while (1) {
+	 HAL_Delay(1000);
+	 }
+
+	 */
+
+	/* =======================================================================
+	 ADIM 2: NORMAL KULLANIM MODU (Fabrika Kalibrasyonu Yüklendi)
+	 ======================================================================= */
+	MagCal_Set_Manual(&mag_cal, 3909.7019f, 743.865479f, 2871.96362f, // Hard-Iron Offset (X, Y, Z)
+			2.19261146f, 0.13430129f, 0.28153193f, // Soft-Iron Row 1 (X düzeltmesi)
+			0.13430129f, 2.20970869f, -0.0106879082f, // Soft-Iron Row 2 (Y düzeltmesi)
+			0.281532019f, -0.0106879156f, 1.32414579f // Soft-Iron Row 3 (Z düzeltmesi)
+			);
+
+	// ... (Kodun geri kalanı aynı)
 	///INIT MADGWICK
 	Madgwick_Init(&madgwick_data, 0.1f);
 
@@ -181,6 +222,9 @@ int main(void) {
 
 		/* USER CODE BEGIN 3 */
 
+		//POLL
+		BMP180_Poll(&bmp180_handle);
+
 		///UPDATE CENSOR DATA
 		MPU6050_Get_Inertial_Data(&mpu6050_handle, &inertial_data);
 		QMC5883P_Get_Magnetic_Data(&qmc5883p_handle, &magnetic_data);
@@ -201,9 +245,21 @@ int main(void) {
 		gy = -(float) inertial_data.gyro.gyro_x;
 		gz = (float) inertial_data.gyro.gyro_z;
 
-		mx = (float) magnetic_data.x_mag;
-		my = (float) magnetic_data.y_mag;
-		mz = (float) magnetic_data.z_mag;
+		///MAGNETOMETER UYGULAMASI (3x3 Matrisli kalibrasyon)
+		float cal_mx, cal_my, cal_mz;
+		MagCal_Apply(&mag_cal, magnetic_data.x_mag, magnetic_data.y_mag,
+				magnetic_data.z_mag, &cal_mx, &cal_my, &cal_mz);
+
+		/* Align calibrated mag data to Body Frame (Forward-Left-Up) */
+		mx = cal_mx;
+		my = cal_my;
+		mz = cal_mz;
+
+		/// LIVE EXPRESSIONS TESTİ İÇİN BASİT 2D HESAP
+		heading = atan2f(my, mx) * (180.0f / M_PI);
+		if (heading < 0.0f) {
+			heading += 360.0f;
+		}
 
 		///UPDATE QUATERNION & EULER
 		if (dt > 0.0f && dt < 0.5f) {
@@ -219,7 +275,7 @@ int main(void) {
 				madgwick_euler.yaw, 1000.0f);
 
 		///DELAY
-		HAL_Delay(1);
+		HAL_Delay(10); // Okumayı rahat görebilmek için delay
 	}
 	/* USER CODE END 3 */
 }

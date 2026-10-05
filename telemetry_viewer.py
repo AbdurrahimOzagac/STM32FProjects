@@ -8,7 +8,7 @@ from vpython import (
 # ---------------------------------------------------------------
 # AYARLAR
 # ---------------------------------------------------------------
-SERIAL_PORT = "COM5"      # Aygıt Yöneticisindeki güncel port
+SERIAL_PORT = "COM6"      # Aygıt Yöneticisindeki güncel port
 BAUD_RATE = 115200
 MAX_ALTITUDE_M = 200.0
 
